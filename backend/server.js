@@ -11,6 +11,7 @@ const app = express();
 app.use(cors({
   origin: [
     config.frontendUrl,
+    "https://vel-tradingagency.vercel.app",
     "http://localhost:8080",
     "http://localhost:5173",
   ],
