@@ -141,6 +141,82 @@ router.post("/initiate", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/payment/callback?x-gl-token=...
+// PayGlocal may redirect the browser here with the token as a query param.
+// Same logic as POST — decode token, update order, redirect to frontend.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/callback", async (req, res) => {
+  try {
+    const glToken = req.query["x-gl-token"] || "";
+
+    console.log(`📩 Received PayGlocal GET callback. Token present: ${!!glToken}`);
+
+    if (!glToken) {
+      console.error("❌ GET Callback missing x-gl-token query param");
+      return res.redirect(303, `${config.frontendUrl}/payment-failure`);
+    }
+
+    // Decode JWT payload (header.payload.signature)
+    const parts = glToken.split(".");
+    if (parts.length !== 3) {
+      console.error("❌ Invalid token format in GET callback");
+      return res.redirect(303, `${config.frontendUrl}/payment-failure`);
+    }
+
+    const base64Payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const paymentData   = JSON.parse(Buffer.from(base64Payload, "base64").toString("utf-8"));
+
+    console.log("📦 Decoded GET callback payload:", paymentData);
+
+    const { status, merchantTxnId, amount, currency, gid, paymentMethod, cardType, cardBrand, country } = paymentData;
+
+    if (!merchantTxnId || !gid) {
+      console.error("❌ Missing merchantTxnId or gid in GET callback payload");
+      return res.redirect(303, `${config.frontendUrl}/payment-failure`);
+    }
+
+    await connectToDatabase();
+
+    // Save transaction log
+    await Transaction.create({
+      merchantTxnId,
+      gid,
+      status,
+      amount:   amount   || "0.00",
+      currency: currency || "USD",
+      paymentMethod,
+      cardType,
+      cardBrand,
+      country,
+      rawPayload: paymentData,
+    });
+
+    // Update order
+    const order = await Order.findOne({ merchantTxnId });
+    if (!order) {
+      console.error(`❌ Order not found for merchantTxnId: ${merchantTxnId}`);
+      return res.redirect(303, `${config.frontendUrl}/payment-failure`);
+    }
+
+    const isSuccess = status === "SENT_FOR_CAPTURE";
+    order.paymentStatus = isSuccess ? "PAID" : "FAILED";
+    order.gid = gid;
+    await order.save();
+
+    console.log(`✅ Order ${merchantTxnId} → ${order.paymentStatus}`);
+
+    const redirectUrl = isSuccess
+      ? `${config.frontendUrl}/payment-success?txnId=${merchantTxnId}`
+      : `${config.frontendUrl}/payment-failure?txnId=${merchantTxnId}`;
+
+    return res.redirect(303, redirectUrl);
+  } catch (error) {
+    console.error("Error in GET /api/payment/callback:", error);
+    return res.redirect(303, `${config.frontendUrl}/payment-failure`);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/payment/callback
 // PayGlocal posts here after payment. Updates order, redirects browser.
 // ─────────────────────────────────────────────────────────────────────────────
