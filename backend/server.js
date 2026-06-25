@@ -29,7 +29,24 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/payment", paymentRoutes);
 app.use("/api/admin", adminRoutes);
 
-// Health check
+// Root + health check
+app.get("/", (_req, res) => {
+  res.json({
+    name: "Vel Trading Agency API",
+    status: "running",
+    version: "1.0.0",
+    endpoints: [
+      "POST /api/payment/initiate",
+      "POST /api/payment/callback",
+      "GET  /api/payment/order/:txnId",
+      "POST /api/admin/login",
+      "GET  /api/admin/dashboard",
+      "GET  /api/admin/orders",
+      "GET  /api/admin/orders/:merchantTxnId",
+    ],
+  });
+});
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
