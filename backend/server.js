@@ -12,6 +12,7 @@ app.use(cors({
   origin: [
     config.frontendUrl,
     "https://vel-tradingagency.vercel.app",
+    "https://veltradingagency.shop",
     "http://localhost:8080",
     "http://localhost:5173",
   ],
